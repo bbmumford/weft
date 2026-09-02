@@ -2,9 +2,7 @@ package weft
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"strings"
 )
 
 // Request-metadata context carriers. An ingress middleware stamps the caller's
@@ -45,31 +43,14 @@ func ExtractUserAgent(ctx context.Context) string {
 	return ""
 }
 
-// ClientIPFromRequest extracts the caller's client IP from a request: the
-// leftmost X-Forwarded-For hop (the original client behind proxies) when present,
-// else the host of RemoteAddr. Returns "" for a nil request.
-func ClientIPFromRequest(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
-}
-
 // StampRequestMetadata is the ingress middleware that stamps the client IP and
 // user agent onto the request context, so downstream handlers read them via
-// ExtractClientIP/ExtractUserAgent without touching the request.
+// ExtractClientIP/ExtractUserAgent without touching the request. The client IP
+// uses the trusted-proxy-aware DefaultClientIP (see clientip.go) so a spoofed
+// forwarded header from an untrusted peer cannot set the stamped IP.
 func StampRequestMetadata(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := WithClientIP(r.Context(), ClientIPFromRequest(r))
+		ctx := WithClientIP(r.Context(), DefaultClientIP(r))
 		ctx = WithUserAgent(ctx, GetUserAgent(r))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

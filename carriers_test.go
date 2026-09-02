@@ -20,27 +20,12 @@ func TestClientIPUserAgentCarriers_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestClientIPFromRequest_XFFThenRemoteAddr(t *testing.T) {
-	r := httptest.NewRequest("GET", "/", nil)
-	r.RemoteAddr = "10.0.0.1:5555"
-	r.Header.Set("X-Forwarded-For", "198.51.100.9, 10.0.0.1")
-	if got := ClientIPFromRequest(r); got != "198.51.100.9" {
-		t.Errorf("XFF leftmost = %q, want 198.51.100.9", got)
-	}
-	r2 := httptest.NewRequest("GET", "/", nil)
-	r2.RemoteAddr = "192.0.2.4:443"
-	if got := ClientIPFromRequest(r2); got != "192.0.2.4" {
-		t.Errorf("RemoteAddr host = %q, want 192.0.2.4", got)
-	}
-	if got := ClientIPFromRequest(nil); got != "" {
-		t.Errorf("nil request = %q, want empty", got)
-	}
-}
-
 func TestStampRequestMetadata_PopulatesCtx(t *testing.T) {
+	// Untrusted RemoteAddr → the stamped IP is RemoteAddr, not the forged header.
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "192.0.2.10:1234"
 	r.Header.Set("User-Agent", "agent/1")
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
 	var gotIP, gotUA string
 	h := StampRequestMetadata(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 		gotIP = ExtractClientIP(req.Context())
@@ -48,6 +33,6 @@ func TestStampRequestMetadata_PopulatesCtx(t *testing.T) {
 	}))
 	h.ServeHTTP(httptest.NewRecorder(), r)
 	if gotIP != "192.0.2.10" || gotUA != "agent/1" {
-		t.Fatalf("stamped ip=%q ua=%q, want 192.0.2.10 / agent/1", gotIP, gotUA)
+		t.Fatalf("stamped ip=%q ua=%q, want 192.0.2.10 / agent/1 (untrusted peer: header ignored)", gotIP, gotUA)
 	}
 }
