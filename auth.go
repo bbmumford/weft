@@ -10,6 +10,16 @@ import "net/http"
 // It names WHO is calling and WHAT they hold. It carries no partition or
 // ownership axis, for the reason given on SetAuthContext: nothing keyed on a
 // store selector may be read from here.
+//
+// DO NOT ADD A TENANT, ORG, PARTITION OR OWNER FIELD. An Authenticator resolving
+// a credential is exactly where one looks natural — the credential usually knows
+// which partition it belongs to — but the axis carrier is loom's scope.Axis /
+// id.Scope pair, which is non-aliasing by construction: a value stamped on one
+// axis cannot be read back on another. A second axis carrier here would be
+// aliasing by construction instead, since every axis would arrive as the same
+// plain string field, and a selector reading it could not tell a platform-level
+// value from a customer-level one. Stamp the axis through loom alongside this,
+// never inside it.
 type Subject struct {
 	// ID identifies the caller. An empty ID is never treated as authenticated —
 	// RequireAuth denies instead of stamping it, because ExtractUserID returns ""
