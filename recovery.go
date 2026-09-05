@@ -5,6 +5,9 @@
 package weft
 
 import (
+	"bufio"
+	"errors"
+	"net"
 	"net/http"
 	"runtime"
 )
@@ -56,19 +59,63 @@ func Recovery(report PanicReporter) func(http.Handler) http.Handler {
 	}
 }
 
-// statusWriter records whether the handler began a response, so Recovery can
-// tell a panic before the first write from one after it.
+// statusWriter records whether the handler began a response, and with what status
+// and how many bytes, so Recovery can tell a panic before the first write from one
+// after it and RequestLogging can report what was sent.
 type statusWriter struct {
 	http.ResponseWriter
-	wrote bool
+	wrote  bool
+	status int
+	bytes  int
 }
 
+// WriteHeader records only the FIRST status, which is the one that reaches the
+// client; a later WriteHeader changes nothing on the wire and must not change what
+// is reported either.
 func (s *statusWriter) WriteHeader(status int) {
+	if !s.wrote {
+		s.status = status
+	}
 	s.wrote = true
 	s.ResponseWriter.WriteHeader(status)
 }
 
+// Write records an implicit 200 for a handler that writes a body without calling
+// WriteHeader, which is what net/http sends in that case.
 func (s *statusWriter) Write(b []byte) (int, error) {
-	s.wrote = true
-	return s.ResponseWriter.Write(b)
+	if !s.wrote {
+		s.status = http.StatusOK
+		s.wrote = true
+	}
+	n, err := s.ResponseWriter.Write(b)
+	s.bytes += n
+	return n, err
 }
+
+// Flush forwards to the wrapped writer. Without it, wrapping strips the Flusher
+// interface from every request behind this middleware, and an SSE or chunked
+// handler downstream — a text/event-stream feed, a streamed inference response —
+// buffers its frames instead of sending them as they are produced. The failure is
+// silent: the handler's type assertion just stops succeeding, and the response is
+// correct but arrives all at once at the end.
+func (s *statusWriter) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijack forwards to the wrapped writer, which a WebSocket upgrade and a raw
+// connection relay both require. Unlike Flush this one fails loudly, so a stripped
+// Hijacker shows up as a failed upgrade rather than as latency.
+func (s *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := s.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, errors.New("weft: underlying ResponseWriter does not support hijacking")
+}
+
+// Unwrap exposes the wrapped writer to http.ResponseController, which is how
+// std-library code reaches the optional interfaces this type does not name
+// explicitly — read/write deadlines among them. Flush and Hijack stay declared
+// above because callers that type-assert directly never consult Unwrap.
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
