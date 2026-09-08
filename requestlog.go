@@ -71,21 +71,31 @@ func RequestLogging(cfg RequestLogConfig) func(http.Handler) http.Handler {
 			}
 			start := time.Now()
 			sw := &statusWriter{ResponseWriter: w}
+			returned := false
+			// Deferred so a handler that PANICS is still reported. Without this the
+			// panic unwinds past the call and the request vanishes from the log —
+			// and a recovery middleware mounted outside this one turns it into a 500
+			// the log never mentions, which is the request an operator most wants.
+			defer func() {
+				status := sw.status
+				// A handler that RETURNED without writing anything still produced a
+				// 200: net/http sends one when the handler falls off the end. One
+				// that never returned wrote nothing and produced nothing from here,
+				// so its status stays 0 — recording 200 would file a panic as a
+				// success. A reader treats 0 as "did not complete", never as a code.
+				if status == 0 && returned {
+					status = http.StatusOK
+				}
+				cfg.Observe(r, RequestRecord{
+					Method:   r.Method,
+					Path:     r.URL.Path,
+					Status:   status,
+					Bytes:    sw.bytes,
+					Duration: time.Since(start),
+				})
+			}()
 			next.ServeHTTP(sw, r)
-			// A handler that returned without writing anything still produced a 200:
-			// net/http sends one when the handler falls off the end, so reporting 0
-			// here would invent a status that never went on the wire.
-			status := sw.status
-			if status == 0 {
-				status = http.StatusOK
-			}
-			cfg.Observe(r, RequestRecord{
-				Method:   r.Method,
-				Path:     r.URL.Path,
-				Status:   status,
-				Bytes:    sw.bytes,
-				Duration: time.Since(start),
-			})
+			returned = true
 		})
 	}
 }

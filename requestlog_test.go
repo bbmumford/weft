@@ -85,3 +85,35 @@ func TestRequestLoggingPreservesFlusher(t *testing.T) {
 		t.Fatal("Flusher stripped: a streaming handler behind this would buffer to the end")
 	}
 }
+
+// A panicking handler must still be reported, and must NOT be reported as a 200.
+// The status stays 0 because nothing was written: filing a panic as a success is
+// worse than the silence it replaces.
+func TestRequestLoggingReportsAPanickingHandlerAsIncomplete(t *testing.T) {
+	var got RequestRecord
+	var seen bool
+	h := RequestLogging(RequestLogConfig{
+		Observe: func(_ *http.Request, rec RequestRecord) { got, seen = rec, true },
+	})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	}))
+
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the panic was swallowed here; RequestLogging must not recover")
+			}
+		}()
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
+	}()
+
+	if !seen {
+		t.Fatal("a panicking request was not reported at all")
+	}
+	if got.Status != 0 {
+		t.Errorf("Status = %d, want 0 — the handler never returned and wrote nothing", got.Status)
+	}
+	if got.Path != "/x" || got.Method != http.MethodGet {
+		t.Errorf("record = %+v, want the request's method and path", got)
+	}
+}
