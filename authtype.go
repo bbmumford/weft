@@ -29,4 +29,14 @@ const (
 	// AuthTypeDev — a development-only bypass. A production build must never
 	// admit it; treat its presence in a live path as a defect.
 	AuthTypeDev = "dev"
+
+	// AuthTypeUnknown is what GetAuthType reports when NOTHING stamped a type.
+	// It is a sentinel for "not authenticated here", never a credential: no
+	// Authenticator may return it and no AcceptedTypes list may contain it,
+	// because admitting it would admit every unstamped request.
+	//
+	// It is named so a caller distinguishing "no type" from a real one compares
+	// against this rather than a literal — the comparison is easy to omit, and
+	// omitting it forwards "unknown" onward as though it were a credential.
+	AuthTypeUnknown = "unknown"
 )
