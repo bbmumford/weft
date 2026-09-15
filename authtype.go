@@ -28,7 +28,20 @@ const (
 	AuthTypeBearer = "bearer"
 	// AuthTypeDev — a development-only bypass. A production build must never
 	// admit it; treat its presence in a live path as a defect.
+	//
+	// ⚠ NOT AuthTypeDevice. This one is the bypass; that one is an enrolled
+	// device's credential and is admitted in production. The identifiers differ
+	// by three characters and this is the prefix of that, so an editor offers
+	// both — reaching for the wrong one here admits a bypass on a live path.
 	AuthTypeDev = "dev"
+	// AuthTypeDevice — an enrolled device's own credential. It authenticates a
+	// device against the partition it was enrolled into, which is why a reader
+	// asking "is this a service rather than a person" answers yes for it: a
+	// device holds no membership of its own, so treating it as interactive sends
+	// it to a membership lookup that has no row to find and refuses every call.
+	//
+	// ⚠ NOT AuthTypeDev. See the warning there.
+	AuthTypeDevice = "device"
 
 	// AuthTypeUnknown is what GetAuthType reports when NOTHING stamped a type.
 	// It is a sentinel for "not authenticated here", never a credential: no
