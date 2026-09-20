@@ -43,6 +43,13 @@ const (
 	// ⚠ NOT AuthTypeDev. See the warning there.
 	AuthTypeDevice = "device"
 
+	// AuthTypeMesh — a principal another node sealed and this node's admission
+	// accepted. It names a caller proved by the transport it arrived over rather
+	// than by anything the request itself presented, which is why no
+	// Authenticator produces it: it is stamped on the receive path, after
+	// admission, from the sealed identity.
+	AuthTypeMesh = "mesh"
+
 	// AuthTypeUnknown is what GetAuthType reports when NOTHING stamped a type.
 	// It is a sentinel for "not authenticated here", never a credential: no
 	// Authenticator may return it and no AcceptedTypes list may contain it,
