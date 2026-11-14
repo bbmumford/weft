@@ -1,7 +1,6 @@
 package weft
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -30,17 +29,6 @@ func TestDBTimeRoundTrip(t *testing.T) {
 	if !got.Equal(now) {
 		t.Fatalf("roundtrip: %v != %v", got, now)
 	}
-}
-
-func TestRequireEnvDefault(t *testing.T) {
-	if got := RequireEnvDefault("WEFT_NOT_SET_XYZ", "fallback"); got != "fallback" {
-		t.Fatalf("absent env → default; got %q", got)
-	}
-	t.Setenv("WEFT_SET_XYZ", "value")
-	if got := RequireEnvDefault("WEFT_SET_XYZ", "fallback"); got != "value" {
-		t.Fatalf("present env → value; got %q", got)
-	}
-	os.Unsetenv("WEFT_SET_XYZ")
 }
 
 func TestValidateRedirect(t *testing.T) {

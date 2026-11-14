@@ -10,15 +10,6 @@ import (
 	"strconv"
 )
 
-// RequireEnv fatals if key is missing
-func RequireEnv(key string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	log.Fatalf("env var %s is required", key)
-	return "" // unreachable
-}
-
 // RequireEnvInt falls back to def if missing/invalid
 func RequireEnvInt(key string, def int) int {
 	if s := os.Getenv(key); s != "" {
@@ -26,14 +17,6 @@ func RequireEnvInt(key string, def int) int {
 			return i
 		}
 		log.Printf("invalid %s=%q, using %d", key, s, def)
-	}
-	return def
-}
-
-// RequireEnvDefault falls back to def if missing
-func RequireEnvDefault(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
 	}
 	return def
 }
