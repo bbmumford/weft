@@ -37,9 +37,12 @@ var DefaultTrustedHeaderOrder = []string{
 // them there — outside, a direct client could forge them). headerOrder selects
 // which headers and in what precedence; the first non-empty wins. For
 // X-Forwarded-For, take the LAST entry (the immediately-upstream trusted proxy's
-// view), never the first (which an untrusted client can write). A nil/empty
-// headerOrder disables header extraction (RemoteAddr only). Falls back to
-// RemoteAddr on any miss.
+// view), never the first (which an untrusted client can write). The chosen value
+// must parse as an IP address (netip.ParseAddr) and is returned in its canonical
+// form, an IPv4-mapped IPv6 address as IPv4; a value that does not parse is not
+// an address and RemoteAddr wins, so no header text reaches a rate-limit key or
+// an allowlist as a caller address. A nil/empty headerOrder disables header
+// extraction (RemoteAddr only). Falls back to RemoteAddr on any miss.
 func ClientIPFromRequest(r *http.Request, trustedPrefixes []netip.Prefix, headerOrder []string) string {
 	if r == nil {
 		return ""
@@ -58,9 +61,12 @@ func ClientIPFromRequest(r *http.Request, trustedPrefixes []netip.Prefix, header
 			}
 			if strings.EqualFold(name, "X-Forwarded-For") {
 				parts := strings.Split(v, ",")
-				return strings.TrimSpace(parts[len(parts)-1])
+				v = parts[len(parts)-1]
 			}
-			return strings.TrimSpace(v)
+			if a, err := netip.ParseAddr(strings.TrimSpace(v)); err == nil {
+				return a.Unmap().String()
+			}
+			return host
 		}
 	}
 	return host
