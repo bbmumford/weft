@@ -1,6 +1,8 @@
 package weft
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -84,7 +86,8 @@ func isTrustedPrefix(ip netip.Addr, prefixes []netip.Prefix) bool {
 
 // ParseTrustedPrefixes converts CIDR strings to netip.Prefix values, dropping
 // (and logging) malformed entries. Empty input returns nil — callers treat nil
-// as "no trust set" and disable header extraction.
+// as "no trust set" and disable header extraction. A deployment's declared edge
+// prefixes are read with ParseTrustedEdgePrefixes, which refuses instead.
 func ParseTrustedPrefixes(s []string) []netip.Prefix {
 	if len(s) == 0 {
 		return nil
@@ -99,6 +102,27 @@ func ParseTrustedPrefixes(s []string) []netip.Prefix {
 		out = append(out, p)
 	}
 	return out
+}
+
+// ErrTrustedEdgePrefix is returned by ParseTrustedEdgePrefixes for a prefix that
+// does not parse.
+var ErrTrustedEdgePrefix = errors.New("weft/clientip: malformed trusted edge prefix")
+
+// ParseTrustedEdgePrefixes converts a deployment's declared trusted edge
+// prefixes to netip.Prefix values for ClientIPFromRequest, refusing the whole
+// set when any entry does not parse (ErrTrustedEdgePrefix), so a boot that reads
+// a mistyped prefix stops rather than trusting a narrower or wider set than the
+// one declared. An empty set is no trust set: header extraction is off.
+func ParseTrustedEdgePrefixes(s []string) ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, 0, len(s))
+	for _, raw := range s {
+		p, err := netip.ParsePrefix(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %q: %v", ErrTrustedEdgePrefix, raw, err)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }
 
 // DefaultTrustedPrefixes is the parsed DefaultTrustedEdgeCIDRs, memoised once per
