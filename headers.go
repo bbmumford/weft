@@ -5,6 +5,7 @@
 package weft
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -35,6 +36,14 @@ type SecurityHeadersConfig struct {
 	AllowedMethods []string
 	AllowedHeaders []string
 	ExposedHeaders []string
+
+	// PathCORS gives requests under particular paths their own cross-origin
+	// policy. The first entry whose Path matches the request decides its CORS
+	// headers alone: AllowedOrigins, AllowCredentials and the lists above are not
+	// consulted for it, so a host admitted site-wide by subdomain is not admitted
+	// on a path that names its origins exactly. A path no entry matches is
+	// answered from AllowedOrigins.
+	PathCORS []PathCORS
 
 	// ContentSecurityPolicy is sent verbatim. This package does not compose one:
 	// a policy names the consumer's own script, style and asset hosts, and a
@@ -74,6 +83,48 @@ type SecurityHeadersConfig struct {
 	CanonicalExempt []string
 }
 
+// PathCORS is the cross-origin policy of one path.
+//
+// A path policy never sends Access-Control-Allow-Credentials: a caller of such a
+// path presents its credential in a request header it names in AllowedHeaders,
+// so the browser needs no cookie grant, and an origin that is admitted exactly
+// gains nothing a cookie would add.
+type PathCORS struct {
+	// Path is matched as CanonicalExempt entries are: an entry ending in "/" by
+	// prefix, any other exactly.
+	Path string
+
+	// Origins lists the exact origins admitted, each an https scheme and a host
+	// with an optional port ("https://docs.example.com"), compared with the
+	// request's Origin header as a whole and case-insensitively. There is no
+	// subdomain match and no wildcard; an entry ParseCORSOrigin refuses never
+	// admits anything.
+	Origins []string
+
+	// AllowedMethods, AllowedHeaders and ExposedHeaders are sent verbatim when an
+	// origin is admitted, and omitted when empty, as the site-wide lists are.
+	AllowedMethods []string
+	AllowedHeaders []string
+	ExposedHeaders []string
+}
+
+// ErrCORSOrigin refuses an origin ParseCORSOrigin cannot use as an exact origin.
+var ErrCORSOrigin = errors.New("weft: a CORS origin is an https scheme and a host with an optional port, and nothing else")
+
+// ParseCORSOrigin returns origin in the form PathCORS compares ("https://" and the
+// lowercased host and port), or ErrCORSOrigin for anything else: a wildcard, a
+// scheme other than https, user info, a path, a query or a fragment. A consumer
+// that reads PathCORS origins from configuration checks each with it at load, so
+// a mistyped origin stops the load rather than silently admitting nothing.
+func ParseCORSOrigin(origin string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(origin))
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.Hostname() == "" || u.User != nil ||
+		u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || strings.Contains(u.Host, "*") {
+		return "", ErrCORSOrigin
+	}
+	return "https://" + strings.ToLower(u.Host), nil
+}
+
 // SecurityHeaders applies response security headers, answers CORS preflight, and
 // redirects a request that arrived on a non-canonical host.
 //
@@ -99,7 +150,15 @@ func SecurityHeaders(cfg SecurityHeadersConfig) func(http.Handler) http.Handler 
 			// variant would otherwise replay one origin's grant to every other.
 			if origin := r.Header.Get("Origin"); origin != "" {
 				w.Header().Add("Vary", "Origin")
-				if originAllowed(cfg.AllowedOrigins, origin) {
+				if p, ok := pathCORS(cfg.PathCORS, r.URL.Path); ok {
+					if exactOriginAllowed(p.Origins, origin) {
+						h := w.Header()
+						h.Set("Access-Control-Allow-Origin", origin)
+						setIfAny(h, "Access-Control-Allow-Methods", p.AllowedMethods)
+						setIfAny(h, "Access-Control-Allow-Headers", p.AllowedHeaders)
+						setIfAny(h, "Access-Control-Expose-Headers", p.ExposedHeaders)
+					}
+				} else if originAllowed(cfg.AllowedOrigins, origin) {
 					h := w.Header()
 					h.Set("Access-Control-Allow-Origin", origin)
 					if cfg.AllowCredentials {
@@ -154,6 +213,33 @@ func originAllowed(allowed []string, origin string) bool {
 			continue
 		}
 		if host == a || strings.HasSuffix(host, "."+a) {
+			return true
+		}
+	}
+	return false
+}
+
+// pathCORS returns the first policy whose Path matches path, as exemptPath
+// matches an entry.
+func pathCORS(policies []PathCORS, path string) (PathCORS, bool) {
+	for _, p := range policies {
+		if p.Path != "" && exemptPath([]string{p.Path}, path) {
+			return p, true
+		}
+	}
+	return PathCORS{}, false
+}
+
+// exactOriginAllowed reports whether an Origin header is, as a whole, one of the
+// allowed exact origins once both are in ParseCORSOrigin's form. An allowed entry
+// ParseCORSOrigin refuses matches nothing.
+func exactOriginAllowed(allowed []string, origin string) bool {
+	o, err := ParseCORSOrigin(origin)
+	if err != nil {
+		return false
+	}
+	for _, a := range allowed {
+		if want, err := ParseCORSOrigin(a); err == nil && want == o {
 			return true
 		}
 	}
