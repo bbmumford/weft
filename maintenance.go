@@ -143,12 +143,19 @@ func serveMaintenance(w http.ResponseWriter, r *http.Request, reason string) {
 	if strings.Contains(r.URL.Path, "/api/") || strings.Contains(accept, "application/json") {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, `{"error":"maintenance","reason":%q,"path":%q}`, reason, r.URL.Path)
+		writeMaintenanceBody(w, `{"error":"maintenance","reason":%q,"path":%q}`, reason, r.URL.Path)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	fmt.Fprintf(w, maintenancePage, htmlEscape(reason))
+	writeMaintenanceBody(w, maintenancePage, htmlEscape(reason))
+}
+
+// writeMaintenanceBody writes the 503 body after serveMaintenance has sent the
+// status and headers. A write that fails means the client has gone, and the
+// response it would have read is already decided, so the error is dropped.
+func writeMaintenanceBody(w http.ResponseWriter, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
 }
 
 const maintenancePage = `<!doctype html><html lang="en"><head><meta charset="utf-8">

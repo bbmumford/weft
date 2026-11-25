@@ -19,7 +19,7 @@ import (
 // unbounded handler context is exactly the fault these tests look for: waiting
 // on it would hang the run instead of failing it, and a hanging test reports
 // nothing.
-func serveWithDeadline(t *testing.T, mw func(http.Handler) http.Handler) (hadDeadline bool, ended error, rec *httptest.ResponseRecorder) {
+func serveWithDeadline(t *testing.T, mw func(http.Handler) http.Handler) (hadDeadline bool, rec *httptest.ResponseRecorder, ended error) {
 	t.Helper()
 	type seen struct {
 		deadline bool
@@ -38,7 +38,7 @@ func serveWithDeadline(t *testing.T, mw func(http.Handler) http.Handler) (hadDea
 	})
 	mw(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	s := <-out
-	return s.deadline, s.err, rec
+	return s.deadline, rec, s.err
 }
 
 // TestRequestDeadlineBoundsTheHandlerContext checks the two legs the mounts
@@ -47,7 +47,7 @@ func serveWithDeadline(t *testing.T, mw func(http.Handler) http.Handler) (hadDea
 // that loses the middleware is visibly different rather than silently unbounded.
 func TestRequestDeadlineBoundsTheHandlerContext(t *testing.T) {
 	t.Run("with the middleware the context expires", func(t *testing.T) {
-		hadDeadline, ended, _ := serveWithDeadline(t, RequestDeadline(10*time.Millisecond))
+		hadDeadline, _, ended := serveWithDeadline(t, RequestDeadline(10*time.Millisecond))
 		if !hadDeadline {
 			t.Fatal("the handler's context carries no deadline, so a slow call below it is unbounded")
 		}
@@ -61,7 +61,7 @@ func TestRequestDeadlineBoundsTheHandlerContext(t *testing.T) {
 
 	t.Run("without the middleware there is no deadline", func(t *testing.T) {
 		passthrough := func(next http.Handler) http.Handler { return next }
-		hadDeadline, ended, _ := serveWithDeadline(t, passthrough)
+		hadDeadline, _, ended := serveWithDeadline(t, passthrough)
 		if hadDeadline {
 			t.Fatal("a request with no RequestDeadline mount reports a deadline, so this test proves nothing")
 		}
@@ -93,7 +93,7 @@ func TestRequestDeadlineRefusesANonPositiveDuration(t *testing.T) {
 // middleware that wrote its own code first would hold the recorder's status and
 // drop that write.
 func TestRequestDeadlineWritesNoResponse(t *testing.T) {
-	_, _, rec := serveWithDeadline(t, func(next http.Handler) http.Handler {
+	_, rec, _ := serveWithDeadline(t, func(next http.Handler) http.Handler {
 		return RequestDeadline(5 * time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
 			w.WriteHeader(http.StatusNoContent)

@@ -28,10 +28,13 @@ func (s *stubRouter) MethodNotAllowed(http.HandlerFunc)        {}
 // A stub satisfying the shape must satisfy both interfaces, or route packages
 // cannot be tested against anything but a real mux.
 func TestStubSatisfiesRouterAndRootRouter(t *testing.T) {
-	var r Router = &stubRouter{}
-	var root RootRouter = &stubRouter{}
-	if r == nil || root == nil {
-		t.Fatal("stub failed to satisfy the routing interfaces")
+	s := &stubRouter{}
+	var r Router = s
+	var root RootRouter = s
+	r.Get("/through-router", nil)
+	root.Get("/through-root", nil)
+	if len(s.gets) != 2 || s.gets[0] != "/through-router" || s.gets[1] != "/through-root" {
+		t.Fatalf("the stub recorded %q through its two interfaces, want both routes in order", s.gets)
 	}
 }
 
