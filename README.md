@@ -5,7 +5,7 @@ weft is shared HTTP plumbing for Go services, independent of any router or ident
 - **Request-context carriers**: who is calling (`SetAuthContext`: subject, scopes, auth type; `WithSessionID`), which partitions the call reaches (`WithPartition`, `WithPartitions`: an opaque axis-to-value map), and the caller's client IP and user agent (`WithClientIP`, `WithUserAgent`), with readers such as `ExtractScopes` and `GetAuthType`.
 - **Middleware**: authentication over an `Authenticator` and `Gate`s you supply (`RequireAuth`), session attachment (`AttachSession`), panic recovery (`Recovery`), request logging (`RequestLogging`), security headers, CORS and a canonical-host redirect (`SecurityHeaders`), maintenance mode (`Maintenance`), per-request deadlines (`RequestDeadline`) and a concurrency cap (`NewConcurrencyGuard`).
 - **Client IP**: `ClientIPFromRequest` believes forwarding headers only from proxies inside the trusted prefixes you name, and returns a forwarded value only when it parses as an IP address; `ParseTrustedEdgePrefixes` reads a deployment's declared trusted prefixes and refuses a malformed one.
-- Small helpers: id and token generation, environment readers, htmx response headers, redirect validation and the database time format.
+- Small helpers: id and token generation, htmx response headers, redirect validation and the database time format.
 
 ## Use
 
