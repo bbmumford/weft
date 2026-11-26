@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/bbmumford/weft/compare/v0.2.0...v0.3.0) (2026-11-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* RequireEnvInt and RequireEnvBool are removed.
+
+### Features
+
+* weft no longer exports RequireEnvInt and RequireEnvBool ([f640e0d](https://github.com/bbmumford/weft/commit/f640e0dc7010322d3b696da6c45065a639ecc035))
+
 ## [0.2.0](https://github.com/bbmumford/weft/compare/v0.1.0...v0.2.0) (2026-11-25)
 
 
